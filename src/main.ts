@@ -15,7 +15,7 @@ type BlockNode =
   | { type: "list"; ordered: boolean; items: BlockNode[][] }
   | { type: "codeBlock"; value: string; language: string }
   | { type: "divider" };
-type Message = { id: string; author: string; github: string; url: string; body: BlockNode[] };
+type Message = { id: string; author: string; github: string; url: string; title: string; body: BlockNode[] };
 type ElementTag = keyof HTMLElementTagNameMap;
 
 const USERNAME = /^(?!-)(?!.*--)[A-Za-z0-9-]{1,39}(?<!-)$/;
@@ -97,9 +97,11 @@ function validBlocks(value: unknown): value is BlockNode[] {
 function validMessage(value: unknown): value is Message {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<Message>;
+  const anonymous = item.github === "" && item.url === "";
+  const linkedProfile = typeof item.github === "string" && USERNAME.test(item.github)
+    && item.url === `https://github.com/${item.github}`;
   return typeof item.id === "string" && typeof item.author === "string" && item.author.length > 0
-    && typeof item.github === "string" && USERNAME.test(item.github) && typeof item.url === "string"
-    && item.url === `https://github.com/${item.github}` && validBlocks(item.body);
+    && typeof item.title === "string" && (anonymous || linkedProfile) && validBlocks(item.body);
 }
 function makeMessageCard(message: Message): HTMLElement {
   const article = el("article", "message-card");
@@ -107,14 +109,15 @@ function makeMessageCard(message: Message): HTMLElement {
   const avatar = el("span", "avatar", message.author.trim().slice(0, 1).toLocaleUpperCase()); avatar.setAttribute("aria-hidden", "true");
   const author = el("div", "message-card__identity");
   author.append(el("h3", "message-card__author", message.author));
-  const profileUrl = safeHref(message.url);
-  if (profileUrl) {
+  const profileUrl = message.url ? safeHref(message.url) : null;
+  if (profileUrl && message.github) {
     const github = el("a", "message-card__handle", `@${message.github}`); github.href = profileUrl;
     github.target = "_blank"; github.rel = "noopener noreferrer"; github.append(icon("arrow", "tiny-arrow")); author.append(github);
   }
   const achievement = el("span", "achievement"); achievement.append(icon("spark", "achievement__icon"), document.createTextNode("首次贡献"));
   top.append(avatar, author, achievement);
-  const body = el("div", "message-card__body"); body.append(renderBlocks(message.body));
+  const body = el("div", "message-card__body");
+  body.append(el("h4", "message-card__title", message.title), renderBlocks(message.body));
   const footer = el("div", "message-card__footer"); footer.append(el("span", "message-card__id", `# ${message.id}`), el("span", "merged-state", "已合并 · 公会成员"));
   article.append(top, body, footer); return article;
 }

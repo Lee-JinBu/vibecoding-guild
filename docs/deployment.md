@@ -2,7 +2,9 @@
 
 ## PR 留言校验
 
-`.github/workflows/pr-validation.yml` 只响应目标为 `main` 的 Pull Request。它以只读权限检出目标分支中的校验脚本，获取 PR head 后计算 merge-base，并检查从 merge-base 到 PR head 的**全部变更**。PR 必须只新增一个 `messages/YYYY-MM-DD-GitHub用户名.md` 文件；不能修改或删除已有文件，也不能更改源码、依赖、文档或工作流。文件名、Front Matter 中的 `github` 与 PR 作者用户名必须一致。
+`.github/workflows/pr-validation.yml` 只响应目标为 `main` 的 Pull Request。它以只读权限检出目标分支中的校验脚本，获取 PR head 后计算 merge-base，并检查从 merge-base 到 PR head 的**全部变更**。PR 必须只新增一个 `messages/` 下的 `.md` 文件；不能修改或删除已有文件，也不能更改源码、依赖、文档或工作流。文件名不需要日期或用户名，也不要求 Front Matter。
+
+留言不能超过 10 KB，不能包含原始 HTML、图片或危险链接。Front Matter 是可选的；没有作者信息时，留言以“匿名冒险者”显示。文件中的第一个一级标题会作为留言标题。
 
 校验过程将 PR Markdown 当作数据读取，不检出或运行 PR 中的脚本。工作流使用 `pull_request`，不使用 `pull_request_target`；不授予写权限，也不读取仓库密钥。
 
