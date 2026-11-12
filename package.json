@@ -1,0 +1,24 @@
+{
+    "name":  "git-adventurers-guild-message-wall",
+    "private":  true,
+    "version":  "0.1.0",
+    "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=26 \u003c27"
+                },
+    "scripts":  {
+                    "dev":  "npm run validate \u0026\u0026 vite",
+                    "build":  "npm run validate \u0026\u0026 tsc -b \u0026\u0026 vite build",
+                    "validate":  "node scripts/messages.mjs",
+                    "test":  "node --test",
+                    "preview":  "vite preview"
+                },
+    "devDependencies":  {
+                            "typescript":  "^5.9.3",
+                            "vite":  "^7.1.12"
+                        },
+    "dependencies":  {
+                         "marked":  "^18.2.0",
+                         "yaml":  "^2.9.1"
+                     }
+}
