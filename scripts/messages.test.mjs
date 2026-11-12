@@ -1,6 +1,6 @@
-import { test, afterEach } from "node:test";
+﻿import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readMessages, MAX_FILE_BYTES } from "./messages.mjs";
@@ -9,60 +9,64 @@ let root;
 async function setup() { root = await mkdtemp(join(tmpdir(), "guild-messages-")); return root; }
 afterEach(async () => { if (root) await rm(root, { recursive: true, force: true }); });
 async function put(file, contents, directory = root) { await writeFile(join(directory, file), contents, "utf8"); }
-function message(github = "new-student", body = "初次来到公会！") {
-  return `---\nauthor: 冒险者\ngithub: ${github}\n---\n\n${body}\n`;
-}
 
-test("合法留言读取为安全的结构化数据", async () => {
-  await setup(); await put("2026-11-12-student.md", message("new-student", "欢迎 **大家**，[GitHub](https://github.com)"));
+ test("plain Markdown works without metadata and extracts its title", async () => {
+  await setup(); await put("welcome.md", "# A new adventure\n\nMy first contribution to the guild.\n");
   const [item] = await readMessages(root);
-  assert.equal(item.author, "冒险者"); assert.equal(item.github, "new-student");
-  assert.deepEqual(item.body[0].children[1], { type: "strong", children: [{ type: "text", value: "大家" }] });
-  assert.equal(item.body[0].children[3].href, "https://github.com/");
+  assert.equal(item.title, "A new adventure");
+  assert.equal(item.author, "匿名冒险者");
+  assert.equal(item.github, ""); assert.equal(item.url, "");
+  assert.equal(item.body[0].children[0].value, "My first contribution to the guild.");
 });
 
-test("无效 YAML 被拒绝", async () => {
-  await setup(); await put("2026-11-12-student.md", "---\nauthor: [broken\n---\ntext");
+test("legacy YAML Front Matter remains supported", async () => {
+  await setup(); await put("legacy-note.md", "---\nauthor: Lin\ngithub: lin-codes\n---\n\n# Hello Guild\n\nNice to meet you.\n");
+  const [item] = await readMessages(root);
+  assert.equal(item.author, "Lin"); assert.equal(item.github, "lin-codes");
+  assert.equal(item.title, "Hello Guild"); assert.equal(item.body.length, 1);
+});
+
+test("invalid YAML Front Matter is rejected", async () => {
+  await setup(); await put("broken.md", "---\nauthor: [broken\n---\ntext");
   await assert.rejects(readMessages(root), /YAML 格式错误/);
 });
 
-test("缺少必填字段被拒绝", async () => {
-  await setup(); await put("2026-11-12-student.md", "---\nauthor: 冒险者\n---\n正文");
-  await assert.rejects(readMessages(root), /github 必填/);
+test("invalid optional GitHub metadata is rejected", async () => {
+  await setup(); await put("bad-account.md", "---\ngithub: javascript:alert\n---\n\n# Hello\n");
+  await assert.rejects(readMessages(root), /github 格式无效/);
 });
 
-test("重复用户名（忽略大小写）被拒绝", async () => {
-  await setup(); await put("2026-11-12-a.md", message("SameUser")); await put("2026-11-12-b.md", message("sameuser"));
-  await assert.rejects(readMessages(root), /用户名.*重复/);
+test("oversized messages are rejected", async () => {
+  await setup(); await put("long-note.md", "x".repeat(MAX_FILE_BYTES + 1));
+  await assert.rejects(readMessages(root), /不能超过 10 KB/);
 });
 
-test("超长留言被拒绝", async () => {
-  await setup(); await put("2026-11-12-student.md", message("new-student", "字".repeat(MAX_FILE_BYTES)));
-  await assert.rejects(readMessages(root), /超过 10 KB 限制/);
-});
-
-test("原始 HTML、危险链接和非 HTTP(S) 链接被拒绝", async () => {
-  await setup(); await put("2026-11-12-student.md", message("new-student", "<img src=x onerror=alert(1)>"));
+test("raw HTML and dangerous links are rejected", async () => {
+  await setup(); await put("unsafe.md", "<img src=x onerror=alert(1)>");
   await assert.rejects(readMessages(root), /原始 HTML/);
-  await put("2026-11-12-student.md", message("new-student", "[点我](javascript:alert%281%29)"));
+  await put("unsafe.md", "[click](javascript:alert%281%29)");
   await assert.rejects(readMessages(root), /不允许的链接协议|非法链接/);
 });
 
-test("Windows UTF-8 BOM is accepted", async () => {
-  await setup(); await put("2026-11-12-student.md", "\uFEFF" + message());
-  const items = await readMessages(root); assert.equal(items.length, 1);
-});
-
-test("空留言目录返回空列表", async () => {
+test("empty directory returns an empty list", async () => {
   await setup(); assert.deepEqual(await readMessages(root), []);
 });
 
-test("下划线开头模板会被忽略", async () => {
-  await setup(); await put("_template.md", "malicious"); assert.deepEqual(await readMessages(root), []);
+test("underscore Markdown templates are ignored", async () => {
+  await setup(); await put("_template.md", "template content"); assert.deepEqual(await readMessages(root), []);
 });
 
-test("文件名穿越和不规范文件名被拒绝", async () => {
-  await setup(); await put("bad.md", message()); await assert.rejects(readMessages(root), /文件名不符合要求/);
+test("other underscore files are rejected rather than silently ignored", async () => {
+  await setup(); await put("_hidden.md", "hidden content");
+  await assert.rejects(readMessages(root), /文件名无效/);
 });
 
+test("UTF-8 BOM and ordinary filenames are accepted", async () => {
+  await setup(); await put("hello there.md", "\uFEFF# Welcome\n\nHello.\n");
+  const [item] = await readMessages(root); assert.equal(item.title, "Welcome");
+});
 
+test("non-Markdown entries are rejected instead of silently ignored", async () => {
+  await setup(); await put("notes.txt", "not a message");
+  await assert.rejects(readMessages(root), /只允许 Markdown/);
+});
