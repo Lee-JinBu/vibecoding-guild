@@ -1,1 +1,7 @@
-{}
+{
+  "messages/test-author.md": {
+    "login": "Lee-JinBu",
+    "pullRequest": 3,
+    "mergedAt": "2026-11-12T18:00:23.000Z"
+  }
+}
