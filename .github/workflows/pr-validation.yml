@@ -1,7 +1,7 @@
 ﻿name: PR 留言校验
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # 校验器和应用代码都来自目标分支；PR 中的 Markdown 仅作为数据导入。
+      # pull_request_target 使用目标分支中的可信工作流；只检出 base SHA，PR 内容仅按 Git 对象读取并解析为数据。
       - name: 检出目标分支
         uses: actions/checkout@v4
         with:

@@ -19,10 +19,10 @@ async function put(file, contents, directory = root) { await writeFile(join(dire
   assert.equal(item.body[0].children[0].value, "My first contribution to the guild.");
 });
 
-test("legacy YAML Front Matter remains supported", async () => {
+test("legacy YAML Front Matter remains supported but is not trusted for identity", async () => {
   await setup(); await put("legacy-note.md", "---\nauthor: Lin\ngithub: lin-codes\n---\n\n# Hello Guild\n\nNice to meet you.\n");
   const [item] = await readMessages(root);
-  assert.equal(item.author, "Lin"); assert.equal(item.github, "lin-codes");
+  assert.equal(item.author, "匿名冒险者"); assert.equal(item.github, "");
   assert.equal(item.title, "Hello Guild"); assert.equal(item.body.length, 1);
 });
 
@@ -31,9 +31,16 @@ test("invalid YAML Front Matter is rejected", async () => {
   await assert.rejects(readMessages(root), /YAML 格式错误/);
 });
 
-test("invalid optional GitHub metadata is rejected", async () => {
-  await setup(); await put("bad-account.md", "---\ngithub: javascript:alert\n---\n\n# Hello\n");
-  await assert.rejects(readMessages(root), /github 格式无效/);
+test("Front Matter identity claims cannot override trusted attribution", async () => {
+  await setup(); await put("claim.md", "---\nauthor: Victim\ngithub: victim-account\n---\n\n# Hello\n");
+  const [anonymous] = await readMessages(root);
+  assert.equal(anonymous.author, "匿名冒险者");
+  const [attributed] = await readMessages(root, {
+    "messages/claim.md": { login: "actual-contributor", pullRequest: 12, mergedAt: "2026-11-13T00:00:00Z" },
+  });
+  assert.equal(attributed.author, "actual-contributor");
+  assert.equal(attributed.github, "actual-contributor");
+  assert.equal(attributed.url, "https://github.com/actual-contributor");
 });
 
 test("oversized messages are rejected", async () => {

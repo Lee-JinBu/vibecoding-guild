@@ -48,11 +48,12 @@ test("a new Markdown file with an ordinary name is accepted", async () => {
 test("PRs cannot modify existing files or include non-message files", () => {
   assert.throws(() => validatePrChanges([{ status: "M", path: "messages/note.md" }]), /必须是新增文件/);
   assert.throws(() => validatePrChanges([{ status: "D", path: "messages/note.md" }]), /必须是新增文件/);
-  for (const path of ["README.md", "src/main.ts", ".github/workflows/pages.yml", "package.json", "messages/note.txt"]) {
+  for (const path of ["README.md", "src/main.ts", ".github/workflows/pages.yml", "package.json", "data/message-authors.json", "messages/note.txt"]) {
     assert.throws(() => validatePrChanges([{ status: "A", path }]), /必须放在 messages|以 \.md 结尾/);
   }
-  for (const path of ["src/main.ts", ".github/workflows/pr-validation.yml", "package.json"]) {
+  for (const path of ["src/main.ts", ".github/workflows/pr-validation.yml", "package.json", "data/message-authors.json"]) {
     assert.throws(() => validatePrChanges([{ status: "M", path }]), /必须是新增文件/);
+    assert.throws(() => validatePrChanges([{ status: "D", path }]), /必须是新增文件/);
   }
   assert.throws(() => validatePrChanges([{ status: "A", path: "messages/../README.md" }]), /路径符号/);
   assert.throws(() => validatePrChanges([{ status: "A", path: "messages/nested/note.md" }]), /路径符号/);
