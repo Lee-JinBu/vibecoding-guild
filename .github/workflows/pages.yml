@@ -3,12 +3,15 @@
 on:
   push:
     branches: [main]
+  repository_dispatch:
+    types: [message-authors-updated]
 
 permissions: {}
 
 concurrency:
   group: github-pages
   cancel-in-progress: false
+  queue: max
 
 jobs:
   build:

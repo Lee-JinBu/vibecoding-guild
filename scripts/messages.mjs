@@ -3,10 +3,9 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 import { marked } from "marked";
+import { GITHUB_LOGIN, loadMessageAuthors, validateMessageAuthorMap } from "./message-authors.mjs";
 
 export const MAX_FILE_BYTES = 10 * 1024;
-const MAX_AUTHOR_LENGTH = 40;
-const USERNAME = /^(?!-)(?!.*--)[A-Za-z0-9-]{1,39}(?<!-)$/;
 const SAFE_FILENAME = /^[\p{L}\p{N}][\p{L}\p{N} _().-]{0,119}\.md$/u;
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
@@ -64,7 +63,7 @@ function inlineText(nodes) {
   }).join("").replace(/\s+/g, " ").trim();
 }
 
-function parseMessage(source, file) {
+function parseMessage(source, file, authorMap) {
   source = source.replace(/^\uFEFF/, "");
   if (!SAFE_FILENAME.test(file) || basename(file) !== file || file.includes("..")) fail(file, "文件名无效，请使用简单文字并以 .md 结尾，例如：我的留言.md。");
 
@@ -78,8 +77,8 @@ function parseMessage(source, file) {
     catch (error) { fail(file, `YAML 元数据格式错误：${error.message}`); }
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) fail(file, "YAML 元数据必须是对象。");
     if (Object.keys(metadata).some((key) => !["author", "github"].includes(key))) fail(file, "旧版留言只支持 author 和 github 字段。");
-    if (metadata.author !== undefined && (typeof metadata.author !== "string" || !metadata.author.trim() || metadata.author.trim().length > MAX_AUTHOR_LENGTH)) fail(file, `author 不能为空且不能超过 ${MAX_AUTHOR_LENGTH} 个字符。`);
-    if (metadata.github !== undefined && (typeof metadata.github !== "string" || !USERNAME.test(metadata.github))) fail(file, "Front Matter 中的 github 格式无效。");
+    if (metadata.author !== undefined && typeof metadata.author !== "string") fail(file, "旧版 author 字段必须是文字。");
+    if (metadata.github !== undefined && typeof metadata.github !== "string") fail(file, "旧版 github 字段必须是文字。");
     markdown = match[2].trim();
   }
 
@@ -88,9 +87,11 @@ function parseMessage(source, file) {
   const titleIndex = body.findIndex((block) => block.type === "heading" && block.level === 1);
   const title = titleIndex >= 0 ? inlineText(body[titleIndex].children) : "冒险者留言";
   if (titleIndex >= 0) body.splice(titleIndex, 1);
-  const github = typeof metadata.github === "string" ? metadata.github : "";
+  // Markdown Front Matter is user supplied, so it is never an identity source.
+  const login = authorMap[`messages/${file}`]?.login;
+  const github = login && GITHUB_LOGIN.test(login) ? login : "";
   return {
-    author: typeof metadata.author === "string" ? metadata.author.trim() : "匿名冒险者",
+    author: github || "匿名冒险者",
     github,
     url: github ? `https://github.com/${github}` : "",
     title: title || "冒险者留言",
@@ -98,7 +99,8 @@ function parseMessage(source, file) {
   };
 }
 
-export async function readMessages(directory) {
+export async function readMessages(directory, authorMap = {}) {
+  const trustedAuthors = validateMessageAuthorMap(authorMap);
   const root = resolve(directory);
   let entries;
   try { entries = await readdir(root, { withFileTypes: true }); }
@@ -118,14 +120,14 @@ export async function readMessages(directory) {
     const info = await lstat(fullPath);
     if (!info.isFile()) fail(file, "留言必须是普通文件，不能是符号链接或目录。");
     if (info.size > MAX_FILE_BYTES) fail(file, `留言不能超过 ${MAX_FILE_BYTES / 1024} KB。`);
-    const message = parseMessage(await readFile(fullPath, "utf8"), file);
+    const message = parseMessage(await readFile(fullPath, "utf8"), file, trustedAuthors);
     messages.push({ id: file.slice(0, -3), ...message });
   }
   return messages;
 }
 
-export async function generateMessages(directory, outputFile) {
-  const messages = await readMessages(directory);
+export async function generateMessages(directory, outputFile, authorMap = {}) {
+  const messages = await readMessages(directory, authorMap);
   await mkdir(resolve(outputFile, ".."), { recursive: true });
   await writeFile(outputFile, `${JSON.stringify(messages, null, 2)}\n`, "utf8");
   return messages;
@@ -134,7 +136,8 @@ export async function generateMessages(directory, outputFile) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url));
   try {
-    const messages = await generateMessages(join(projectRoot, "messages"), join(projectRoot, "public", "messages.json"));
+    const authors = await loadMessageAuthors(join(projectRoot, "data", "message-authors.json"));
+    const messages = await generateMessages(join(projectRoot, "messages"), join(projectRoot, "public", "messages.json"), authors);
     console.log(`留言检查通过，已生成 public/messages.json（${messages.length} 条）。`);
   } catch (error) {
     console.error(`留言检查失败：${error.message}`);
